@@ -1,0 +1,89 @@
+import processing.serial.*;
+
+Serial myPort;
+PImage img;
+byte[] imgBuffer;
+boolean readingImage = false;
+int bufferIndex = 0;
+int guncelSeviye = 0;
+
+void setup() {
+  size(450, 420); 
+  String portName = Serial.list()[0]; 
+  myPort = new Serial(this, portName, 115200);
+  imgBuffer = new byte[320 * 240 * 3]; 
+}
+
+void draw() {
+  background(40); 
+  
+  fill(255);
+  textSize(20);
+  textAlign(CENTER);
+  text("SafeHome-IoT Güvenlik Paneli", width/2, 40);
+  
+  // Seviye durumları ve renkleri
+  textSize(16);
+  if (guncelSeviye == 0) {
+    fill(0, 255, 0); // Yeşil
+    text("DUMAN DURUMU: (Seviye 0) Sıkıntı Yok", width/2, 80);
+  } else if (guncelSeviye == 1) {
+    fill(255, 255, 0); // Sarı
+    text("DUMAN DURUMU: (Seviye 1) Biraz Duman Var!", width/2, 80);
+  } else if (guncelSeviye == 2) {
+    fill(255, 128, 0); // Turuncu
+    text("DUMAN DURUMU: (Seviye 2) ŞÜPHELİ DURUM!", width/2, 80);
+  } else if (guncelSeviye == 3) {
+    fill(255, 0, 0); // Kırmızı
+    text("DUMAN DURUMU: (Seviye 3) YANGIN! POMPA AKTİF!", width/2, 80);
+  }
+  
+  // Görüntü alanı kontrolü
+  if (guncelSeviye > 0 && img != null) {
+    image(img, 65, 110, 320, 240);
+    fill(255);
+    textSize(12);
+    text("Seviye " + guncelSeviye + " Anına Ait Fotoğraf Kontrolü", width/2, 380);
+  } else {
+    fill(60);
+    rect(65, 110, 320, 240);
+    fill(200);
+    textSize(14);
+    text("Ortam Güvenli. Kamera Beklemede...", width/2, 230);
+    img = null; // Seviye 0'a düşünce eski resmi temizle
+  }
+}
+
+void serialEvent(Serial p) {
+  String inString = p.readStringUntil('\n');
+  if (inString != null) {
+    inString = trim(inString);
+    
+    if (inString.startsWith("SEVIYE:")) {
+      guncelSeviye = int(inString.substring(7));
+    }
+    
+    if (inString.equals("START_IMAGE")) {
+      readingImage = true;
+      bufferIndex = 0;
+    } else if (inString.equals("END_IMAGE")) {
+      readingImage = false;
+      img = createImage(320, 240, RGB);
+      img.loadPixels();
+      for (int i = 0; i < bufferIndex/3 && i < img.pixels.length; i++) {
+        int r = imgBuffer[i*3] & 0xFF;
+        int g = imgBuffer[i*3+1] & 0xFF;
+        int b = imgBuffer[i*3+2] & 0xFF;
+        img.pixels[i] = color(r, g, b);
+      }
+      img.updatePixels();
+    } else if (readingImage) {
+      byte[] inBytes = p.readBytes();
+      if (inBytes != null) {
+        for (int i = 0; i < inBytes.length && bufferIndex < imgBuffer.length; i++) {
+          imgBuffer[bufferIndex++] = inBytes[i];
+        }
+      }
+    }
+  }
+}

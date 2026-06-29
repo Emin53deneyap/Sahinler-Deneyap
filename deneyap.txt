@@ -1,0 +1,57 @@
+#include <Arduino.h>
+#include "v1a_camera.h"
+
+const int dumanPin = A1;
+const int rolePin = D0; // Su pompasının bağlı olduğu röle pini
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(rolePin, OUTPUT);
+  digitalWrite(rolePin, LOW); // Pompa başlangıçta kapalı
+  
+  if (camera_init() != 0) {
+    while (1);
+  }
+  camera_config(2, 2); // 320x240 çözünürlük
+}
+
+void loop() {
+  int hamDuman = analogRead(dumanPin);
+  int dumanSeviyesi = 0;
+
+  // Seviye belirleme
+  if (hamDuman < 200) {
+    dumanSeviyesi = 0; // Hiç sıkıntı yok
+  } else if (hamDuman >= 200 && hamDuman < 400) {
+    dumanSeviyesi = 1; // Biraz duman var
+  } else if (hamDuman >= 400 && hamDuman < 600) {
+    dumanSeviyesi = 2; // Şüpheli durum
+  } else if (hamDuman >= 600) {
+    dumanSeviyesi = 3; // YANGIN!
+  }
+
+  // Processing programına seviyeyi gönder
+  Serial.print("SEVIYE:");
+  Serial.println(dumanSeviyesi);
+
+  // POMPA KONTROLÜ: Sadece Seviye 3'te pompayı aç, diğerlerinde kapat
+  if (dumanSeviyesi == 3) {
+    digitalWrite(rolePin, HIGH); 
+  } else {
+    digitalWrite(rolePin, LOW); 
+  }
+
+  // FOTOĞRAF KONTROLÜ: Seviye 0 HARİÇ (1, 2 veya 3 ise) fotoğraf çek ve gönder
+  if (dumanSeviyesi > 0) {
+    camera_frame_t *frame = camera_get_frame();
+    if (frame) {
+      Serial.println("START_IMAGE"); 
+      Serial.write(frame->buf, frame->len);
+      Serial.println("END_IMAGE");
+      camera_return_frame(frame);
+    }
+    delay(3000); // Seviye 1, 2 veya 3 durumunda her 3 saniyede bir yeni fotoğraf göndersin
+  } else {
+    delay(500); // Seviye 0 ise yarım saniyede bir dumanı kontrol etmeye devam et
+  }
+}
